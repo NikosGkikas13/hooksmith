@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hooksmith
+      POSTGRES_PASSWORD: hooksmith
+      POSTGRES_DB: hooksmith
+    ports:
+      - "5432:5432"
+    volumes:
+      - hooksmith_pg:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - hooksmith_redis:/data
+
+  mailhog:
+    # Captures outgoing magic-link emails for local dev.
+    # Web UI: http://localhost:8025
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  hooksmith_pg:
+  hooksmith_redis:

@@ -1,0 +1,214 @@
+// HookSmith — webhook management platform
+// https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Auth (NextAuth v5 / @auth/prisma-adapter) ----------
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  accounts     Account[]
+  sessions     Session[]
+  sources      Source[]
+  destinations Destination[]
+  apiKey       UserApiKey?
+}
+
+// Bring-your-own-key: each user stores their own Anthropic API key so their
+// Claude usage is billed to them, not the platform.
+model UserApiKey {
+  userId          String   @id
+  anthropicKeyEnc String // encrypted with ENCRYPTION_KEY
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---------- HookSmith domain ----------
+
+model Source {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  slug          String   @unique
+  signingSecret String? // encrypted; optional HMAC verification
+  verifyStyle   String? // "stripe" | "github" | "generic-sha256"
+  createdAt     DateTime @default(now())
+
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events      Event[]
+  routes      Route[]
+  fingerprint SchemaFingerprint?
+
+  @@index([userId])
+}
+
+model Destination {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  url         String
+  headersEnc  String? // encrypted JSON blob: { "X-Api-Key": "..." }
+  timeoutMs   Int      @default(10000)
+  createdAt   DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routes     Route[]
+  deliveries Delivery[]
+
+  @@index([userId])
+}
+
+model Route {
+  id            String   @id @default(cuid())
+  sourceId      String
+  destinationId String
+  enabled       Boolean  @default(true)
+  // M7 — NL-compiled filter AST. If non-null, events are only forwarded on
+  // this route when the filter evaluates truthy. Evaluated deterministically
+  // (no LLM at runtime).
+  filterAst     Json?
+  // M7 — original natural-language prompt used to compile filterAst (for UI display / re-edit).
+  filterPrompt  String?
+  createdAt     DateTime @default(now())
+
+  source         Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  destination    Destination     @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  transformation Transformation?
+
+  @@unique([sourceId, destinationId])
+  @@index([sourceId])
+}
+
+// M5 — AI-generated payload transformation applied before forwarding.
+// One transformation per route; if present, its JS runs in a QuickJS sandbox
+// against the event body and the result is forwarded instead of the raw body.
+model Transformation {
+  id           String   @id @default(cuid())
+  routeId      String   @unique
+  prompt       String // plain-English description provided by the user
+  codeJs       String // pure JS function body: `(event) => transformed`
+  sampleInput  String? // the event payload used to preview/validate
+  sampleOutput String? // last preview output
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  route Route @relation(fields: [routeId], references: [id], onDelete: Cascade)
+}
+
+// M6 — cached Claude diagnosis for a failed delivery.
+model AiDiagnosis {
+  id         String   @id @default(cuid())
+  deliveryId String   @unique
+  summary    String
+  detail     String
+  modelUsed  String
+  createdAt  DateTime @default(now())
+
+  delivery Delivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+}
+
+// M7 — most recent structural fingerprint per source, used to detect drift
+// when nightly sampling compares the current shape against this.
+model SchemaFingerprint {
+  sourceId    String   @id
+  fingerprint Json
+  generatedAt DateTime @default(now())
+
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  sourceId    String
+  method      String
+  headersJson Json
+  bodyRaw     String // raw request body as text
+  receivedAt  DateTime @default(now())
+  remoteIp    String?
+
+  source     Source     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  deliveries Delivery[]
+
+  @@index([sourceId, receivedAt])
+}
+
+enum DeliveryStatus {
+  pending
+  in_flight
+  delivered
+  failed
+  exhausted
+}
+
+model Delivery {
+  id                  String         @id @default(cuid())
+  eventId             String
+  destinationId       String
+  status              DeliveryStatus @default(pending)
+  attemptCount        Int            @default(0)
+  responseCode        Int?
+  responseBodySnippet String? // first 2KB
+  lastError           String?
+  nextRetryAt         DateTime?
+  deliveredAt         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  destination Destination  @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  diagnosis   AiDiagnosis?
+
+  @@index([eventId])
+  @@index([destinationId, status])
+}

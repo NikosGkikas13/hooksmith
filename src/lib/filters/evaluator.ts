@@ -1,0 +1,190 @@
+// Deterministic filter AST evaluator.
+//
+// The AI rule compiler turns plain-English rules into a small declarative AST
+// that we evaluate at delivery time without calling the LLM. This keeps
+// runtime cost at zero per event and makes behaviour testable.
+//
+// Supported nodes:
+//   { and: [ ...nodes ] }
+//   { or:  [ ...nodes ] }
+//   { not: node }
+//   { eq: [ path, literal ] }
+//   { neq: [ path, literal ] }
+//   { gt: [ path, number ] }
+//   { gte: [ path, number ] }
+//   { lt: [ path, number ] }
+//   { lte: [ path, number ] }
+//   { in: [ path, literal[] ] }
+//   { contains: [ path, string ] }   // case-insensitive substring on strings
+//   { exists: path }                  // truthy if path resolves to anything not undefined
+//
+// Paths are JSONPath-lite: `$.data.amount`, `$.customer.address.country`.
+// A leading `$.` is optional. Bracket notation is not supported.
+
+export type JsonPath = string;
+
+export type FilterAst =
+  | { and: FilterAst[] }
+  | { or: FilterAst[] }
+  | { not: FilterAst }
+  | { eq: [JsonPath, unknown] }
+  | { neq: [JsonPath, unknown] }
+  | { gt: [JsonPath, number] }
+  | { gte: [JsonPath, number] }
+  | { lt: [JsonPath, number] }
+  | { lte: [JsonPath, number] }
+  | { in: [JsonPath, unknown[]] }
+  | { contains: [JsonPath, string] }
+  | { exists: JsonPath };
+
+/**
+ * Read a value out of `event` using a dotted path. Returns undefined if any
+ * intermediate step is missing. Arrays are indexed numerically (`$.items.0.id`).
+ */
+export function readPath(event: unknown, path: JsonPath): unknown {
+  const trimmed = path.startsWith("$.")
+    ? path.slice(2)
+    : path.startsWith("$")
+      ? path.slice(1)
+      : path;
+  if (!trimmed) return event;
+  const parts = trimmed.split(".").filter(Boolean);
+  let cur: unknown = event;
+  for (const p of parts) {
+    if (cur == null) return undefined;
+    if (typeof cur !== "object") return undefined;
+    cur = (cur as Record<string, unknown>)[p];
+  }
+  return cur;
+}
+
+function toNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
+ * Evaluate a filter AST against an event. Returns true if the event passes.
+ * An invalid or unrecognised node returns false (fail-closed).
+ */
+export function evaluateFilter(ast: FilterAst, event: unknown): boolean {
+  if (!ast || typeof ast !== "object") return false;
+
+  if ("and" in ast) return ast.and.every((n) => evaluateFilter(n, event));
+  if ("or" in ast) return ast.or.some((n) => evaluateFilter(n, event));
+  if ("not" in ast) return !evaluateFilter(ast.not, event);
+
+  if ("eq" in ast) {
+    const [p, lit] = ast.eq;
+    return readPath(event, p) === lit;
+  }
+  if ("neq" in ast) {
+    const [p, lit] = ast.neq;
+    return readPath(event, p) !== lit;
+  }
+  if ("gt" in ast) {
+    const [p, lit] = ast.gt;
+    const a = toNumber(readPath(event, p));
+    return a !== null && a > lit;
+  }
+  if ("gte" in ast) {
+    const [p, lit] = ast.gte;
+    const a = toNumber(readPath(event, p));
+    return a !== null && a >= lit;
+  }
+  if ("lt" in ast) {
+    const [p, lit] = ast.lt;
+    const a = toNumber(readPath(event, p));
+    return a !== null && a < lit;
+  }
+  if ("lte" in ast) {
+    const [p, lit] = ast.lte;
+    const a = toNumber(readPath(event, p));
+    return a !== null && a <= lit;
+  }
+  if ("in" in ast) {
+    const [p, list] = ast.in;
+    const v = readPath(event, p);
+    return list.includes(v);
+  }
+  if ("contains" in ast) {
+    const [p, needle] = ast.contains;
+    const v = readPath(event, p);
+    return typeof v === "string"
+      ? v.toLowerCase().includes(needle.toLowerCase())
+      : false;
+  }
+  if ("exists" in ast) {
+    return readPath(event, ast.exists) !== undefined;
+  }
+
+  return false;
+}
+
+/**
+ * Shallow structural validation of an untrusted AST (e.g. loaded from the DB
+ * or returned by Claude). Rejects unknown keys, wrong shapes, and nested
+ * invalid children. Throws with a descriptive message on failure.
+ */
+export function validateFilterAst(input: unknown): FilterAst {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("filter must be an object");
+  }
+  const o = input as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length !== 1) {
+    throw new Error(`filter node must have exactly one key, got: ${keys.join(",")}`);
+  }
+  const key = keys[0];
+  const val = o[key];
+
+  switch (key) {
+    case "and":
+    case "or": {
+      if (!Array.isArray(val) || val.length === 0) {
+        throw new Error(`${key} must be a non-empty array`);
+      }
+      return { [key]: val.map(validateFilterAst) } as FilterAst;
+    }
+    case "not":
+      return { not: validateFilterAst(val) };
+    case "eq":
+    case "neq":
+    case "in":
+    case "contains":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte": {
+      if (!Array.isArray(val) || val.length !== 2) {
+        throw new Error(`${key} must be a 2-element array [path, value]`);
+      }
+      const [p, lit] = val;
+      if (typeof p !== "string") throw new Error(`${key} path must be a string`);
+      if (key === "gt" || key === "gte" || key === "lt" || key === "lte") {
+        if (typeof lit !== "number") {
+          throw new Error(`${key} value must be a number`);
+        }
+      }
+      if (key === "in" && !Array.isArray(lit)) {
+        throw new Error(`in value must be an array`);
+      }
+      if (key === "contains" && typeof lit !== "string") {
+        throw new Error(`contains value must be a string`);
+      }
+      return { [key]: [p, lit] } as FilterAst;
+    }
+    case "exists": {
+      if (typeof val !== "string") {
+        throw new Error("exists value must be a path string");
+      }
+      return { exists: val };
+    }
+    default:
+      throw new Error(`unknown filter node: ${key}`);
+  }
+}
