@@ -83,6 +83,11 @@ model Source {
   slug          String   @unique
   signingSecret String? // encrypted; optional HMAC verification
   verifyStyle   String? // "stripe" | "github" | "generic-sha256"
+  // Per-source rate limit overrides. Null = fall back to env defaults.
+  // `rateLimitPerSec` is the sustained refill rate in events per second.
+  // `rateLimitBurst`  is the bucket capacity (max instantaneous burst).
+  rateLimitPerSec Int?
+  rateLimitBurst  Int?
   createdAt     DateTime @default(now())
 
   user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)

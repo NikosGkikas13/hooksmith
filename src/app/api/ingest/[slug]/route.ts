@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { decrypt } from "@/lib/crypto";
 import { verifySignature, type VerifyStyle } from "@/lib/hmac";
 import { getDeliveryQueue } from "@/lib/queue";
+import { checkRateLimit, configForSource } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,29 @@ export async function POST(
 
   if (!source) {
     return NextResponse.json({ error: "unknown source" }, { status: 404 });
+  }
+
+  // Rate limit BEFORE reading the body — we want to shed load before
+  // allocating memory for a large payload. Failures in the limiter (e.g.
+  // Redis briefly unavailable) are logged and fail-open so we don't drop
+  // legitimate traffic during a cache outage.
+  try {
+    const rl = await checkRateLimit(source.id, configForSource(source));
+    if (!rl.allowed) {
+      const retryAfterSec = Math.max(1, Math.ceil(rl.retryAfterMs / 1000));
+      return NextResponse.json(
+        { error: "rate limited" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(retryAfterSec),
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    }
+  } catch (err) {
+    console.error("[ingest] rate limiter error (failing open):", err);
   }
 
   const rawBody = await req.text();

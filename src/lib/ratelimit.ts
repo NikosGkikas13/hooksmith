@@ -1,0 +1,143 @@
+// Redis-backed token-bucket rate limiter.
+//
+// One bucket per source, keyed by `rl:src:<sourceId>`. The bucket is refilled
+// at `refillPerSec` tokens per second up to `capacity` tokens. Each ingest
+// consumes one token. When the bucket is empty we return { allowed: false }
+// along with a `retryAfterSec` hint for the HTTP response.
+//
+// The check + refill + decrement happens inside a single Lua script so it's
+// atomic across concurrent workers / Next.js server instances. Without Lua
+// we'd have a classic check-then-set race where two concurrent requests both
+// observe a full bucket and both decrement to `capacity - 1`.
+
+import { getConnection } from "./queue";
+
+// Stored as a hash with two fields: `tokens` (float) and `ts` (ms epoch).
+// KEYS[1] = bucket key
+// ARGV[1] = capacity (int)
+// ARGV[2] = refillPerSec (float)
+// ARGV[3] = now (ms epoch)
+// ARGV[4] = ttl seconds (int) — key expiry so idle buckets don't accumulate
+//
+// Returns: { allowed (0/1), tokensRemaining (float), retryAfterMs (int) }
+const LUA_SCRIPT = `
+local key = KEYS[1]
+local capacity = tonumber(ARGV[1])
+local refill = tonumber(ARGV[2])
+local now = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+local data = redis.call("HMGET", key, "tokens", "ts")
+local tokens = tonumber(data[1])
+local ts = tonumber(data[2])
+
+if tokens == nil then
+  tokens = capacity
+  ts = now
+end
+
+-- Refill based on elapsed time.
+local elapsed = math.max(0, now - ts) / 1000.0
+tokens = math.min(capacity, tokens + elapsed * refill)
+
+local allowed = 0
+local retryAfterMs = 0
+if tokens >= 1 then
+  tokens = tokens - 1
+  allowed = 1
+else
+  -- How long until we have 1 token?
+  local needed = 1 - tokens
+  if refill > 0 then
+    retryAfterMs = math.ceil((needed / refill) * 1000)
+  else
+    retryAfterMs = 1000
+  end
+end
+
+redis.call("HMSET", key, "tokens", tokens, "ts", now)
+redis.call("EXPIRE", key, ttl)
+
+return { allowed, tostring(tokens), retryAfterMs }
+`;
+
+export type RateLimitResult = {
+  allowed: boolean;
+  tokensRemaining: number;
+  retryAfterMs: number;
+};
+
+export type RateLimitConfig = {
+  /** Sustained refill rate in tokens per second. */
+  refillPerSec: number;
+  /** Maximum bucket capacity (burst size). */
+  capacity: number;
+};
+
+/**
+ * Env-driven defaults. Override in production via:
+ *   RATE_LIMIT_PER_SEC  (default: 10)
+ *   RATE_LIMIT_BURST    (default: 20)
+ */
+export function defaultConfig(): RateLimitConfig {
+  const refill = Number(process.env.RATE_LIMIT_PER_SEC ?? 10);
+  const burst = Number(process.env.RATE_LIMIT_BURST ?? 20);
+  return {
+    refillPerSec: Number.isFinite(refill) && refill > 0 ? refill : 10,
+    capacity: Number.isFinite(burst) && burst > 0 ? burst : 20,
+  };
+}
+
+/**
+ * Check and decrement a bucket. Returns whether the caller is allowed through
+ * and, on rejection, how long to wait before retrying.
+ */
+export async function checkRateLimit(
+  sourceId: string,
+  cfg: RateLimitConfig = defaultConfig(),
+): Promise<RateLimitResult> {
+  const conn = getConnection();
+  const key = `rl:src:${sourceId}`;
+  // TTL = time to refill a full bucket from empty, plus a small buffer.
+  const ttlSec = Math.max(
+    60,
+    Math.ceil(cfg.capacity / Math.max(cfg.refillPerSec, 0.01)) + 60,
+  );
+
+  const raw = (await conn.eval(
+    LUA_SCRIPT,
+    1,
+    key,
+    String(Math.floor(cfg.capacity)),
+    String(cfg.refillPerSec),
+    String(Date.now()),
+    String(ttlSec),
+  )) as [number, string, number];
+
+  return {
+    allowed: raw[0] === 1,
+    tokensRemaining: Number(raw[1]),
+    retryAfterMs: Number(raw[2]),
+  };
+}
+
+/**
+ * Merge a per-source override with the env default. `null` fields on the
+ * override fall through to the default.
+ */
+export function configForSource(source: {
+  rateLimitPerSec: number | null;
+  rateLimitBurst: number | null;
+}): RateLimitConfig {
+  const def = defaultConfig();
+  return {
+    refillPerSec:
+      source.rateLimitPerSec != null && source.rateLimitPerSec > 0
+        ? source.rateLimitPerSec
+        : def.refillPerSec,
+    capacity:
+      source.rateLimitBurst != null && source.rateLimitBurst > 0
+        ? source.rateLimitBurst
+        : def.capacity,
+  };
+}

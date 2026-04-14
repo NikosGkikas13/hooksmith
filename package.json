@@ -7,10 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "worker": "tsx watch src/workers/delivery.ts",
     "worker:prod": "tsx src/workers/delivery.ts",
     "job:drift": "tsx src/scripts/drift.ts",
     "job:digest": "tsx src/scripts/digest.ts",
+    "smoke": "tsx src/scripts/smoke.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
@@ -39,12 +42,14 @@
     "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.1.4",
     "dotenv": "^17.4.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
     "prisma": "^7.7.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.4"
   }
 }
