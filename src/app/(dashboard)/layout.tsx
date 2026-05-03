@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { auth, signOut } from "@/auth";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
   { href: "/sources", label: "Sources" },
@@ -40,6 +41,7 @@ export default async function DashboardLayout({
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-zinc-500">
             <span>{session?.user?.email}</span>
+            <ThemeToggle />
             <form
               action={async () => {
                 "use server";
