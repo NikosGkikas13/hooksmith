@@ -9,6 +9,7 @@ import { prisma } from "../lib/prisma";
 import { decryptJson } from "../lib/crypto";
 import { runTransformation } from "../lib/sandbox/quickjs";
 import { evaluateFilter, type FilterAst } from "../lib/filters/evaluator";
+import { assertSafeUrl, SsrfError } from "../lib/ssrf";
 import {
   DELIVERY_QUEUE,
   MAX_ATTEMPTS,
@@ -173,11 +174,17 @@ async function processDelivery(job: Job<DeliveryJob>) {
   let responseCode: number | null = null;
   let responseSnippet: string | null = null;
   let errorMsg: string | null = transformError;
+  // Set when failure should not be retried — currently only SSRF rejections,
+  // since the destination URL is constant across retries.
+  let terminal = false;
 
   if (transformError) {
     // Skip the fetch entirely — fall through to the failure/retry branch.
     clearTimeout(timeout);
   } else try {
+    // Re-validate at delivery time: defends against DNS rebinding, and
+    // catches destinations that were created before the SSRF guard landed.
+    await assertSafeUrl(delivery.destination.url);
     const res = await fetch(delivery.destination.url, {
       method: delivery.event.method,
       headers,
@@ -191,7 +198,12 @@ async function processDelivery(job: Job<DeliveryJob>) {
       errorMsg = `HTTP ${res.status}`;
     }
   } catch (err) {
-    errorMsg = err instanceof Error ? err.message : String(err);
+    if (err instanceof SsrfError) {
+      errorMsg = `blocked by SSRF guard: ${err.message}`;
+      terminal = true;
+    } else {
+      errorMsg = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -213,7 +225,7 @@ async function processDelivery(job: Job<DeliveryJob>) {
   }
 
   // Failure path — decide retry vs exhaust.
-  if (attempt >= MAX_ATTEMPTS) {
+  if (terminal || attempt >= MAX_ATTEMPTS) {
     await prisma.delivery.update({
       where: { id: deliveryId },
       data: {
@@ -225,7 +237,7 @@ async function processDelivery(job: Job<DeliveryJob>) {
       },
     });
     console.warn(
-      `[worker] exhausted ${deliveryId} after ${attempt} attempts: ${errorMsg}`,
+      `[worker] exhausted ${deliveryId}${terminal ? " (terminal)" : ` after ${attempt} attempts`}: ${errorMsg}`,
     );
     return;
   }

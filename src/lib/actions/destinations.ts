@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { encryptJson } from "@/lib/crypto";
+import { assertSafeUrl, SsrfError } from "@/lib/ssrf";
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -44,6 +45,15 @@ export async function createDestination(formData: FormData) {
 
   const headers = parseHeaders(parsed.headers);
   const hasHeaders = Object.keys(headers).length > 0;
+
+  try {
+    await assertSafeUrl(parsed.url);
+  } catch (err) {
+    if (err instanceof SsrfError) {
+      throw new Error(`Destination URL rejected: ${err.message}`);
+    }
+    throw err;
+  }
 
   await prisma.destination.create({
     data: {
