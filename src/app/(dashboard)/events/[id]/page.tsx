@@ -16,6 +16,18 @@ function prettyJson(raw: string): string {
   }
 }
 
+function formatDate(date: Date): string {
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
 const statusBadge: Record<string, string> = {
   pending: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
   in_flight: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
@@ -108,7 +120,7 @@ export default async function EventDetailPage({
         </div>
       </section>
 
-      <section className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+      <section className="overflow-hidden rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="border-b border-zinc-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:border-zinc-800">
           Deliveries
         </div>
@@ -119,7 +131,7 @@ export default async function EventDetailPage({
         ) : (
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-900">
             {event.deliveries.map((d) => (
-              <li key={d.id} className="flex flex-col gap-2 p-4 sm:flex-row">
+              <li key={d.id} className="flex flex-col gap-2 p-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span
@@ -153,15 +165,11 @@ export default async function EventDetailPage({
                     />
                   )}
                 </div>
-                <div className="text-right text-xs text-zinc-500">
-                  <div>attempt {d.attemptCount}</div>
-                  {d.responseCode && <div>HTTP {d.responseCode}</div>}
-                  {d.deliveredAt && (
-                    <div>{d.deliveredAt.toISOString()}</div>
-                  )}
-                  {d.nextRetryAt && (
-                    <div>retry at {d.nextRetryAt.toISOString()}</div>
-                  )}
+                <div className="flex flex-wrap gap-x-3 text-xs text-zinc-500">
+                  <span>attempt {d.attemptCount}</span>
+                  {d.responseCode && <span>HTTP {d.responseCode}</span>}
+                  {d.deliveredAt && <span>{formatDate(d.deliveredAt)}</span>}
+                  {d.nextRetryAt && <span>retry at {formatDate(d.nextRetryAt)}</span>}
                 </div>
               </li>
             ))}
