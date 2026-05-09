@@ -2,20 +2,25 @@
 // Run via: `npm run job:digest`. Schedule externally (Mondays 9am local).
 //
 // For each user with activity in the last 7 days, build stats and render a
-// digest email body via Claude Haiku. Email delivery is TODO — for now we
-// print the rendered markdown to stdout so it can be piped into any sender.
+// digest email body via Claude Haiku, then send it via the shared SMTP
+// transport. Set DIGEST_DRY_RUN=1 to print to stdout instead — useful
+// for first-time setup and CI.
 
 import "dotenv/config";
 
 import { prisma } from "../lib/prisma";
 import { buildDigestStats, renderDigestEmail } from "../lib/ai/digest";
+import { sendMail } from "../lib/mailer";
 
 async function main() {
+  const dryRun = process.env.DIGEST_DRY_RUN === "1";
   const users = await prisma.user.findMany({
     where: { apiKey: { isNot: null } },
     select: { id: true, email: true, name: true },
   });
-  console.log(`[digest] running for ${users.length} users with api keys`);
+  console.log(
+    `[digest] running for ${users.length} users with api keys${dryRun ? " (DRY RUN)" : ""}`,
+  );
 
   for (const u of users) {
     try {
@@ -29,8 +34,16 @@ async function main() {
         console.log(`[digest] ${u.email}: nothing to send`);
         continue;
       }
-      console.log(`\n===== DIGEST for ${u.email} =====\n${body}\n`);
-      // TODO: wire this into Nodemailer via the auth email transport.
+      if (dryRun) {
+        console.log(`\n===== DIGEST for ${u.email} =====\n${body}\n`);
+        continue;
+      }
+      await sendMail({
+        to: u.email,
+        subject: "Your HookSmith weekly digest",
+        text: body,
+      });
+      console.log(`[digest] ${u.email}: sent`);
     } catch (err) {
       console.error(`[digest] ${u.email}: error`, err);
     }
