@@ -49,7 +49,7 @@ describe("verifySha256", () => {
 describe("verifyStripe", () => {
   const secret = "whsec_stripe_xyz";
   const body = '{"id":"evt_123","type":"charge.succeeded"}';
-  const ts = 1_700_000_000;
+  const ts = Math.floor(Date.now() / 1000);
   const header = signStripe(secret, body, ts);
 
   it("accepts a valid Stripe-Signature header", () => {
@@ -88,13 +88,30 @@ describe("verifyStripe", () => {
     expect(verifyStripe(body, null, secret)).toBe(false);
     expect(verifyStripe(body, undefined, secret)).toBe(false);
   });
+
+  it("rejects timestamps outside the default 5-minute tolerance (replay)", () => {
+    const stale = Math.floor(Date.now() / 1000) - 10 * 60; // 10 min ago
+    const staleSig = signStripe(secret, body, stale);
+    expect(verifyStripe(body, staleSig, secret)).toBe(false);
+  });
+
+  it("accepts stale signatures when tolerance is set to Infinity", () => {
+    const stale = Math.floor(Date.now() / 1000) - 10 * 60;
+    const staleSig = signStripe(secret, body, stale);
+    expect(verifyStripe(body, staleSig, secret, Infinity)).toBe(true);
+  });
+
+  it("rejects a non-numeric timestamp", () => {
+    const v1 = sha256Hex(secret, `notanumber.${body}`);
+    expect(verifyStripe(body, `t=notanumber,v1=${v1}`, secret)).toBe(false);
+  });
 });
 
 describe("verifySignature dispatch", () => {
   const secret = "s";
   const body = "hello";
   const githubSig = `sha256=${sha256Hex(secret, body)}`;
-  const ts = 1_700_000_000;
+  const ts = Math.floor(Date.now() / 1000);
   const stripeSig = signStripe(secret, body, ts);
 
   it("routes github style to x-hub-signature-256", () => {

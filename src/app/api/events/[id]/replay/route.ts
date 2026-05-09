@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getDeliveryQueue } from "@/lib/queue";
+import { checkReplayRateLimit } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,27 @@ export async function POST(
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Per-user replay budget. Fails open on Redis errors — replay is a
+  // human-triggered action and we'd rather a flaky cache not block it.
+  try {
+    const rl = await checkReplayRateLimit(session.user.id);
+    if (!rl.allowed) {
+      const retryAfterSec = Math.max(1, Math.ceil(rl.retryAfterMs / 1000));
+      return NextResponse.json(
+        { error: "rate limited" },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(retryAfterSec),
+            "X-RateLimit-Remaining": "0",
+          },
+        },
+      );
+    }
+  } catch (err) {
+    console.error("[replay] rate limiter error (failing open):", err);
   }
 
   const { id } = await ctx.params;

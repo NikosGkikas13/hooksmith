@@ -10,6 +10,7 @@ import { decryptJson } from "../lib/crypto";
 import { runTransformation } from "../lib/sandbox/quickjs";
 import { evaluateFilter, type FilterAst } from "../lib/filters/evaluator";
 import { assertSafeUrl, SsrfError } from "../lib/ssrf";
+import { SENSITIVE_HEADERS } from "../lib/sensitive-headers";
 import {
   DELIVERY_QUEUE,
   MAX_ATTEMPTS,
@@ -19,8 +20,14 @@ import {
   type DeliveryJob,
 } from "../lib/queue";
 
-// Headers that should never be forwarded to the destination.
-const DROP_HEADERS = new Set([
+// Headers that should never be forwarded to the destination. Combines:
+//   1. Hop-by-hop / framing — re-derived per request by fetch().
+//   2. Sensitive — credentials and source-side signing headers shared
+//      with the persistence layer via SENSITIVE_HEADERS so the two
+//      lists stay in sync.
+// Destination static headers overlay this set, so a destination can
+// still attach its own auth.
+const HOP_BY_HOP_HEADERS = [
   "host",
   "content-length",
   "connection",
@@ -31,7 +38,8 @@ const DROP_HEADERS = new Set([
   "x-forwarded-for",
   "x-forwarded-host",
   "x-forwarded-proto",
-]);
+];
+const DROP_HEADERS = new Set([...HOP_BY_HOP_HEADERS, ...SENSITIVE_HEADERS]);
 
 function sanitizeHeaders(
   raw: Record<string, string | string[] | undefined>,
@@ -113,12 +121,16 @@ async function processDelivery(job: Job<DeliveryJob>) {
     }
   }
 
+  // Mark in-flight up front so concurrent BullMQ retries don't
+  // double-process. attemptCount is *not* incremented here: a worker
+  // that crashes mid-fetch would otherwise burn an attempt without
+  // having made the HTTP call. The terminal updates below increment.
   await prisma.delivery.update({
     where: { id: deliveryId },
-    data: { status: "in_flight", attemptCount: { increment: 1 } },
+    data: { status: "in_flight" },
   });
 
-  const attempt = delivery.attemptCount + 1; // post-increment
+  const attempt = delivery.attemptCount + 1; // this attempt's number
 
   // Forward headers: preserve original request headers, overlay destination static headers.
   const eventHeaders = sanitizeHeaders(
@@ -213,6 +225,7 @@ async function processDelivery(job: Job<DeliveryJob>) {
       where: { id: deliveryId },
       data: {
         status: "delivered",
+        attemptCount: { increment: 1 },
         responseCode,
         responseBodySnippet: responseSnippet,
         deliveredAt: new Date(),
@@ -230,6 +243,7 @@ async function processDelivery(job: Job<DeliveryJob>) {
       where: { id: deliveryId },
       data: {
         status: "exhausted",
+        attemptCount: { increment: 1 },
         responseCode,
         responseBodySnippet: responseSnippet,
         lastError: errorMsg,
@@ -248,6 +262,7 @@ async function processDelivery(job: Job<DeliveryJob>) {
     where: { id: deliveryId },
     data: {
       status: "failed",
+      attemptCount: { increment: 1 },
       responseCode,
       responseBodySnippet: responseSnippet,
       lastError: errorMsg,
@@ -279,8 +294,61 @@ worker.on("failed", (job, err) => {
   console.error(`[worker] job ${job?.id} failed:`, err);
 });
 
+// Reaper: re-enqueue deliveries that have been stuck in `pending` for
+// too long. Covers the gap between `prisma.event.create` and
+// `queue.add` in the ingest handler — if the enqueue fails (Redis
+// hiccup, process crash mid-call), the row exists in Postgres but no
+// job exists in BullMQ. Without this loop those rows would never be
+// processed.
+//
+// Only `pending` is reaped here. `in_flight` orphans from a crashed
+// worker are handled by BullMQ's own stalled-job detection (lock
+// expiry re-queues the job), and reaping them in parallel risks
+// double-delivery while the original worker is still alive.
+const REAPER_INTERVAL_MS = Number(
+  process.env.DELIVERY_REAPER_INTERVAL_MS ?? 60_000,
+);
+const PENDING_GRACE_MS = Number(
+  process.env.DELIVERY_PENDING_GRACE_MS ?? 120_000,
+);
+const REAPER_BATCH_SIZE = 200;
+
+async function reapStalledDeliveries() {
+  const cutoff = new Date(Date.now() - PENDING_GRACE_MS);
+  const stalled = await prisma.delivery.findMany({
+    where: {
+      status: "pending",
+      createdAt: { lt: cutoff },
+    },
+    select: { id: true },
+    take: REAPER_BATCH_SIZE,
+    orderBy: { createdAt: "asc" },
+  });
+  if (stalled.length === 0) return;
+  const queue = getDeliveryQueue();
+  await Promise.all(
+    stalled.map((d) =>
+      queue.add(
+        "deliver",
+        { deliveryId: d.id },
+        { jobId: `reap:${d.id}:${Date.now()}` },
+      ),
+    ),
+  );
+  console.log(`[worker] reaper re-enqueued ${stalled.length} stalled deliveries`);
+}
+
+const reaperTimer = setInterval(() => {
+  reapStalledDeliveries().catch((err) => {
+    console.error("[worker] reaper error:", err);
+  });
+}, REAPER_INTERVAL_MS);
+// Don't keep the event loop alive on shutdown.
+reaperTimer.unref?.();
+
 async function shutdown() {
   console.log("[worker] shutting down...");
+  clearInterval(reaperTimer);
   await worker.close();
   await getDeliveryQueue().close();
   await getConnection().quit();

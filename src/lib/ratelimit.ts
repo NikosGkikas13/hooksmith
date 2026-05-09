@@ -88,16 +88,11 @@ export function defaultConfig(): RateLimitConfig {
   };
 }
 
-/**
- * Check and decrement a bucket. Returns whether the caller is allowed through
- * and, on rejection, how long to wait before retrying.
- */
-export async function checkRateLimit(
-  sourceId: string,
-  cfg: RateLimitConfig = defaultConfig(),
+async function consumeToken(
+  key: string,
+  cfg: RateLimitConfig,
 ): Promise<RateLimitResult> {
   const conn = getConnection();
-  const key = `rl:src:${sourceId}`;
   // TTL = time to refill a full bucket from empty, plus a small buffer.
   const ttlSec = Math.max(
     60,
@@ -119,6 +114,39 @@ export async function checkRateLimit(
     tokensRemaining: Number(raw[1]),
     retryAfterMs: Number(raw[2]),
   };
+}
+
+/**
+ * Check and decrement a bucket. Returns whether the caller is allowed through
+ * and, on rejection, how long to wait before retrying.
+ */
+export async function checkRateLimit(
+  sourceId: string,
+  cfg: RateLimitConfig = defaultConfig(),
+): Promise<RateLimitResult> {
+  return consumeToken(`rl:src:${sourceId}`, cfg);
+}
+
+/**
+ * Per-user rate limit for the replay endpoint. An authed user can otherwise
+ * loop the replay button (or scripted equivalent) and saturate the worker.
+ * Defaults are tighter than ingest because replay is human-driven; override
+ * via REPLAY_RATE_LIMIT_PER_SEC / REPLAY_RATE_LIMIT_BURST.
+ */
+export function defaultReplayConfig(): RateLimitConfig {
+  const refill = Number(process.env.REPLAY_RATE_LIMIT_PER_SEC ?? 1);
+  const burst = Number(process.env.REPLAY_RATE_LIMIT_BURST ?? 10);
+  return {
+    refillPerSec: Number.isFinite(refill) && refill > 0 ? refill : 1,
+    capacity: Number.isFinite(burst) && burst > 0 ? burst : 10,
+  };
+}
+
+export async function checkReplayRateLimit(
+  userId: string,
+  cfg: RateLimitConfig = defaultReplayConfig(),
+): Promise<RateLimitResult> {
+  return consumeToken(`rl:replay:${userId}`, cfg);
 }
 
 /**

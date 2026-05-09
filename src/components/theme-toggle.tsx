@@ -15,7 +15,12 @@ export function ThemeToggle() {
     const next = !isDark;
     setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem("theme", next ? "dark" : "light");
+    // localStorage throws in Safari Private Browsing and when the user
+    // has disabled site storage. Persistence is best-effort here — the
+    // class on <html> already reflects the new theme for this session.
+    try {
+      localStorage.setItem("theme", next ? "dark" : "light");
+    } catch {}
   }
 
   return (

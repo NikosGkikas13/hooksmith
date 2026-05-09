@@ -53,6 +53,10 @@ export function readPath(event: unknown, path: JsonPath): unknown {
   for (const p of parts) {
     if (cur == null) return undefined;
     if (typeof cur !== "object") return undefined;
+    // Own-property guard: a payload key of `__proto__` or `constructor`
+    // would otherwise resolve to the JS prototype, making rules like
+    // `{ exists: "$.__proto__" }` always true.
+    if (!Object.hasOwn(cur as object, p)) return undefined;
     cur = (cur as Record<string, unknown>)[p];
   }
   return cur;

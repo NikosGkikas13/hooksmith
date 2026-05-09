@@ -21,15 +21,35 @@ const createSchema = z.object({
   headers: z.string().optional(), // "Key: Value" per line
 });
 
+// RFC 7230 token: tchar = "!" / "#" / "$" / "%" / "&" / "'" / "*" / "+"
+// / "-" / "." / "^" / "_" / "`" / "|" / "~" / DIGIT / ALPHA
+const HEADER_NAME_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+// Header field value: visible ASCII + space/tab. No CR/LF — those would
+// otherwise let a saved header smuggle a second header into the request
+// at delivery time, and `fetch` rejects them by throwing.
+const HEADER_VALUE_RE = /^[\t\x20-\x7E]*$/;
+
 function parseHeaders(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   const out: Record<string, string> = {};
   for (const line of raw.split("\n")) {
-    const idx = line.indexOf(":");
-    if (idx === -1) continue;
-    const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
-    if (key) out[key] = value;
+    // Tolerate \r\n line endings.
+    const cleaned = line.replace(/\r$/, "");
+    if (cleaned.trim() === "") continue;
+    const idx = cleaned.indexOf(":");
+    if (idx === -1) {
+      throw new Error(`Invalid header line (missing ':'): ${cleaned}`);
+    }
+    const key = cleaned.slice(0, idx).trim();
+    const value = cleaned.slice(idx + 1).trim();
+    if (!key) continue;
+    if (!HEADER_NAME_RE.test(key)) {
+      throw new Error(`Invalid header name: ${JSON.stringify(key)}`);
+    }
+    if (!HEADER_VALUE_RE.test(value)) {
+      throw new Error(`Invalid header value for ${key} (control chars not allowed)`);
+    }
+    out[key] = value;
   }
   return out;
 }

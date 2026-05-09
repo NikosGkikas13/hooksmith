@@ -57,6 +57,14 @@ describe("readPath", () => {
     expect(readPath(sample, "$.")).toBe(sample);
     expect(readPath(sample, "$")).toBe(sample);
   });
+
+  it("does not resolve prototype keys (own-property guard)", () => {
+    expect(readPath({}, "$.__proto__")).toBeUndefined();
+    expect(readPath({}, "$.constructor")).toBeUndefined();
+    expect(readPath({}, "$.toString")).toBeUndefined();
+    // But an own property named `constructor` should still resolve.
+    expect(readPath({ constructor: 42 }, "$.constructor")).toBe(42);
+  });
 });
 
 describe("evaluateFilter — leaf operators", () => {

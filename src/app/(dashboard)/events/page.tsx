@@ -110,8 +110,17 @@ export default async function EventsPage({
   const visible = hasOlder ? events.slice(0, PAGE_SIZE) : events;
   const oldestId = visible.at(-1)?.id;
 
-  // Total count for the header (bounded — cap at 1000 so we don't scan forever).
-  const totalCount = await prisma.event.count({ where });
+  // Bounded count for the header. `prisma.event.count` scans the entire
+  // matching set — fine at thousands, painful at millions — so we cap at
+  // 1001 with a `findMany`+`select id` and display "1000+" past the cap.
+  const COUNT_CAP = 1000;
+  const counted = await prisma.event.findMany({
+    where,
+    select: { id: true },
+    take: COUNT_CAP + 1,
+  });
+  const totalCount = counted.length;
+  const totalCountCapped = totalCount > COUNT_CAP;
 
   function aggregateStatus(
     deliveries: { status: DeliveryStatus }[],
@@ -149,7 +158,10 @@ export default async function EventsPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Events</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            {totalCount.toLocaleString()} event
+            {totalCountCapped
+              ? `${COUNT_CAP.toLocaleString()}+`
+              : totalCount.toLocaleString()}{" "}
+            event
             {totalCount === 1 ? "" : "s"} match
             {totalCount === 1 ? "es" : ""} your filters.
             {cursor && " Paginating older."}

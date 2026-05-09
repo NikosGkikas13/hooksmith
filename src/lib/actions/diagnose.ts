@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { diagnoseDelivery, fingerprintShape } from "@/lib/ai/diagnose";
+import { scrubSensitive } from "@/lib/scrub";
 
 async function requireUserId(): Promise<string> {
   const session = await auth();
@@ -68,12 +69,15 @@ export async function diagnoseDeliveryAction(
     if (typeof v === "string") safeHeaders[k] = v;
   }
 
+  // Destinations sometimes echo input on errors — scrub email- and
+  // token-shaped strings out of the snippet before shipping it to the
+  // model.
   const result = await diagnoseDelivery(userId, {
     destinationHost,
     method: delivery.event.method,
     responseCode: delivery.responseCode,
-    responseBodySnippet: delivery.responseBodySnippet,
-    lastError: delivery.lastError,
+    responseBodySnippet: scrubSensitive(delivery.responseBodySnippet),
+    lastError: scrubSensitive(delivery.lastError),
     requestHeaders: safeHeaders,
     eventShape,
   });

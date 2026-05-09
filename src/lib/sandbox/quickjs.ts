@@ -14,12 +14,10 @@ import {
  *  - Input: a single JSON value (parsed event payload).
  *  - Output: any JSON-serializable value returned by the user function.
  *
- * The user code is wrapped so their source is just the *body* of:
- *
- *   (event) => { ... }
- *
- * i.e. the input source looks like: `return { ... };` or `event.foo;`.
- * Full function expressions are also accepted.
+ * The user code must be a function expression — the AI prompt enforces
+ * `(event) => transformed`, so the wrapper evaluates it as an expression
+ * and calls the resulting function. A non-function evaluation surfaces a
+ * clear error rather than the previous double-interpolation fallback.
  */
 
 let _qjs: QuickJSWASMModule | null = null;
@@ -75,19 +73,20 @@ export async function runTransformation(
       ctx.newString(payload),
     );
 
-    // Wrap user code into a callable. We accept either a raw function body
-    // (expression or statements ending in `return`) or a full arrow fn / fn expression.
+    // The AI prompt promises an arrow expression: `(event) => …`. We
+    // evaluate the user source as an expression and require the result
+    // to be a function. Anything else gets a clear error instead of the
+    // previous "fallback to body interpolation" path.
     const script = `
       (() => {
+        "use strict";
         const event = JSON.parse(globalThis.__HS_EVENT_JSON__);
-        const __user__ = (function() {
-          "use strict";
-          const __u = ${codeJs};
-          if (typeof __u === "function") return __u;
-          return (e) => {
-            ${codeJs}
-          };
-        })();
+        const __user__ = (${codeJs});
+        if (typeof __user__ !== "function") {
+          throw new TypeError(
+            "transformation must be a function expression, e.g. (event) => …"
+          );
+        }
         const out = __user__(event);
         return JSON.stringify(out === undefined ? null : out);
       })();

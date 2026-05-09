@@ -29,10 +29,23 @@ let _queue: Queue<DeliveryJob> | null = null;
 
 export function getConnection(): Redis {
   if (!_connection) {
-    _connection = new IORedis(
+    const conn = new IORedis(
       process.env.REDIS_URL ?? "redis://localhost:6379",
       { maxRetriesPerRequest: null },
     );
+    // ioredis reconnects forever silently by default. Log so a flapping
+    // Redis is visible in operator logs instead of just manifesting as
+    // hung BullMQ jobs and rate-limit fail-opens.
+    conn.on("error", (err) => {
+      console.error("[redis] error:", err.message);
+    });
+    conn.on("reconnecting", (delay: number) => {
+      console.warn(`[redis] reconnecting in ${delay}ms`);
+    });
+    conn.on("end", () => {
+      console.warn("[redis] connection closed");
+    });
+    _connection = conn;
   }
   return _connection;
 }

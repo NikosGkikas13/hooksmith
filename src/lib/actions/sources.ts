@@ -18,11 +18,19 @@ function randomSlug(): string {
   return crypto.randomBytes(6).toString("base64url").toLowerCase();
 }
 
-const createSchema = z.object({
-  name: z.string().min(1).max(100),
-  verifyStyle: z.enum(["none", "stripe", "github", "generic-sha256"]),
-  signingSecret: z.string().optional(),
-});
+const createSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    verifyStyle: z.enum(["none", "stripe", "github", "generic-sha256"]),
+    signingSecret: z.string().optional(),
+  })
+  .refine(
+    (v) => v.verifyStyle === "none" || (v.signingSecret?.trim().length ?? 0) > 0,
+    {
+      message: "signing secret is required when verifyStyle is set",
+      path: ["signingSecret"],
+    },
+  );
 
 export async function createSource(formData: FormData) {
   const userId = await requireUserId();

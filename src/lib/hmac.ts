@@ -28,20 +28,34 @@ export function verifySha256(
   return timingSafeEqualHex(received, expected);
 }
 
+// Default Stripe tolerance — matches Stripe's own SDK default.
+const DEFAULT_STRIPE_TOLERANCE_SEC = 300;
+
 /**
  * Verify a Stripe-style `Stripe-Signature: t=...,v1=...` header.
- * Does not enforce a max skew — add one if needed for production.
+ *
+ * Rejects signatures whose timestamp is more than `toleranceSec` seconds
+ * away from now (replay protection). Pass `Infinity` to disable.
  */
 export function verifyStripe(
   rawBody: string,
   signatureHeader: string | null | undefined,
   secret: string,
+  toleranceSec: number = DEFAULT_STRIPE_TOLERANCE_SEC,
 ): boolean {
   if (!signatureHeader) return false;
   const parts = signatureHeader.split(",").map((p) => p.trim());
   const ts = parts.find((p) => p.startsWith("t="))?.slice(2);
   const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3);
   if (!ts || !v1) return false;
+
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum)) return false;
+  if (Number.isFinite(toleranceSec)) {
+    const skew = Math.abs(Date.now() / 1000 - tsNum);
+    if (skew > toleranceSec) return false;
+  }
+
   const payload = `${ts}.${rawBody}`;
   const expected = crypto
     .createHmac("sha256", secret)

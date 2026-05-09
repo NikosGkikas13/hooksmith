@@ -15,18 +15,20 @@ export default function SignInPage({
           We&apos;ll email you a magic link — no password required.
         </p>
         <SignInForm searchParams={searchParams} />
-        <p className="mt-6 text-xs text-zinc-500">
-          Local dev: check MailHog at{" "}
-          <a
-            href="http://localhost:8025"
-            className="underline"
-            target="_blank"
-            rel="noreferrer"
-          >
-            localhost:8025
-          </a>{" "}
-          for the magic link.
-        </p>
+        {process.env.NODE_ENV !== "production" && (
+          <p className="mt-6 text-xs text-zinc-500">
+            Local dev: check MailHog at{" "}
+            <a
+              href="http://localhost:8025"
+              className="underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              localhost:8025
+            </a>{" "}
+            for the magic link.
+          </p>
+        )}
       </div>
     </main>
   );
