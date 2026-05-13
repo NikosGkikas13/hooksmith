@@ -1,0 +1,20 @@
+# =========================================================================
+# PLACEHOLDER CONFIG — HTTP only, no domain required.
+# Serves on port 80 for any hostname, so http://157.180.91.106 hits the app.
+# Use this to verify the stack works before you have a domain.
+# =========================================================================
+:80 {
+    reverse_proxy web:3000
+}
+
+# =========================================================================
+# PRODUCTION CONFIG — HTTPS via Let's Encrypt.
+# When you have a domain pointing at this server's IP:
+#   1. Comment out the `:80` block above.
+#   2. Uncomment the block below and replace `hooksmith.example.com`.
+#   3. Run: docker compose -f docker-compose.prod.yml restart caddy
+# Caddy will obtain and renew the TLS certificate automatically.
+# =========================================================================
+# hooksmith.example.com {
+#     reverse_proxy web:3000
+# }
