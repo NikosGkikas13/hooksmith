@@ -3,6 +3,7 @@
 
 import "dotenv/config";
 import { prisma } from "../lib/prisma";
+import { Prisma } from "../generated/prisma/client";
 
 async function run() {
   const user = await prisma.user.findUnique({
@@ -18,7 +19,7 @@ async function run() {
   const bad = sources.find((s) => s.slug === "seed-bad");
   if (!good || !bad) throw new Error("seed sources not found");
 
-  const cases: { label: string; where: Parameters<typeof prisma.event.count>[0]["where"] }[] = [
+  const cases: { label: string; where: Prisma.EventWhereInput }[] = [
     {
       label: "all time, all sources, all status",
       where: { source: { userId } },
