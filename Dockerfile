@@ -13,7 +13,9 @@ COPY . .
 RUN npx prisma generate
 ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-RUN npm run build
+# Dummy DATABASE_URL so Next.js can import route modules during page-data collection.
+# Real value is supplied at runtime via env_file. No DB connection is made during build.
+RUN DATABASE_URL=postgresql://dummy:dummy@localhost:5432/dummy npm run build
 
 FROM base AS runtime
 ENV NODE_ENV=production
