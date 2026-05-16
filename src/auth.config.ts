@@ -6,6 +6,7 @@ export default {
   providers: [],
   pages: {
     signIn: "/signin",
+    verifyRequest: "/signin/verify",
   },
   session: { strategy: "jwt" },
   callbacks: {

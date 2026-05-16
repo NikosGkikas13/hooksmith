@@ -1,4 +1,5 @@
 import NextAuth from "next-auth";
+import GitHub from "next-auth/providers/github";
 import Nodemailer from "next-auth/providers/nodemailer";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 
@@ -14,6 +15,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma as any),
   providers: [
+    GitHub,
     Nodemailer({
       // When no SMTP credentials are set (e.g. local MailHog) use a plain URL string.
       // A string value is not deep-merged by @auth/core, so the provider default

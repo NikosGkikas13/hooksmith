@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+
 import { signIn } from "@/auth";
 
 export default function SignInPage({
@@ -12,7 +14,7 @@ export default function SignInPage({
           Sign in to HookSmith
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          We&apos;ll email you a magic link — no password required.
+          Continue with GitHub, or get a magic link by email.
         </p>
         <SignInForm searchParams={searchParams} />
         {process.env.NODE_ENV !== "production" && (
@@ -40,33 +42,57 @@ async function SignInForm({
   searchParams: Promise<{ error?: string; callbackUrl?: string }>;
 }) {
   const { error, callbackUrl } = await searchParams;
+  const redirectTo = callbackUrl ?? "/sources";
   return (
-    <form
-      action={async (formData: FormData) => {
-        "use server";
-        await signIn("nodemailer", {
-          email: String(formData.get("email")),
-          redirectTo: callbackUrl ?? "/sources",
-        });
-      }}
-      className="mt-6 space-y-3"
-    >
-      <input
-        name="email"
-        type="email"
-        required
-        placeholder="you@example.com"
-        className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
-      />
-      <button
-        type="submit"
-        className="inline-flex h-10 w-full items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+    <div className="mt-6 space-y-4">
+      <form
+        action={async () => {
+          "use server";
+          await signIn("github", { redirectTo });
+        }}
       >
-        Send magic link
-      </button>
-      {error && (
-        <p className="text-xs text-red-600">Sign-in error: {error}</p>
-      )}
-    </form>
+        <button
+          type="submit"
+          className="inline-flex h-10 w-full items-center justify-center rounded-md border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+        >
+          Continue with GitHub
+        </button>
+      </form>
+      <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-zinc-500">
+        <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+        or
+        <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+      </div>
+      <form
+        action={async (formData: FormData) => {
+          "use server";
+          const email = String(formData.get("email"));
+          await signIn("nodemailer", {
+            email,
+            redirect: false,
+            redirectTo,
+          });
+          redirect(`/signin/verify?email=${encodeURIComponent(email)}`);
+        }}
+        className="space-y-3"
+      >
+        <input
+          name="email"
+          type="email"
+          required
+          placeholder="you@example.com"
+          className="h-10 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"
+        />
+        <button
+          type="submit"
+          className="inline-flex h-10 w-full items-center justify-center rounded-md bg-zinc-900 px-4 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+        >
+          Send magic link
+        </button>
+        {error && (
+          <p className="text-xs text-red-600">Sign-in error: {error}</p>
+        )}
+      </form>
+    </div>
   );
 }

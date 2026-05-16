@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { auth } from "@/auth";
+import { auth, signIn } from "@/auth";
 
 export default async function Home() {
   const session = await auth();
@@ -34,12 +34,21 @@ export default async function Home() {
               Sign in
             </Link>
           )}
-          <a
-            href="https://github.com"
-            className="inline-flex h-11 items-center rounded-md border border-zinc-200 bg-white px-5 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-          >
-            GitHub
-          </a>
+          {!session?.user && (
+            <form
+              action={async () => {
+                "use server";
+                await signIn("github", { redirectTo: "/sources" });
+              }}
+            >
+              <button
+                type="submit"
+                className="inline-flex h-11 items-center rounded-md border border-zinc-200 bg-white px-5 text-sm font-medium text-zinc-900 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+              >
+                Continue with GitHub
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </main>
