@@ -48,7 +48,7 @@ export default async function RouteTransformPage({
         <p className="mt-1 text-sm text-zinc-500">
           <span className="font-medium">{route.source.name}</span> →{" "}
           <span className="font-medium">{route.destination.name}</span>. The
-          generated code runs in a QuickJS sandbox before HookSmith forwards
+          generated code runs in a QuickJS sandbox before Odyhook forwards
           the event.
         </p>
       </div>

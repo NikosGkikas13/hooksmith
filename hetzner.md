@@ -1,10 +1,10 @@
-# HookSmith on Hetzner — what we did and why
+# Odyhook on Hetzner — what we did and why
 
 This is the conceptual companion to [DEPLOY.md](DEPLOY.md). DEPLOY.md is the *what to type*; this file is the *why*. Read this when you want to understand the deployment, not just follow it.
 
 ## What "deploying" actually means
 
-When you run HookSmith on your laptop with `npm run dev`, three things are true:
+When you run Odyhook on your laptop with `npm run dev`, three things are true:
 
 1. **Your laptop is running the code** — the Node process is alive there.
 2. **Your laptop is reachable only to you** — `localhost` is "this same computer".
@@ -24,7 +24,7 @@ That "other computer" is the **server** we just rented from Hetzner.
 Before:                              After Phase 1:
 
 [Your laptop]                        [Your laptop]
-└── HookSmith code                   └── HookSmith code
+└── Odyhook code                   └── Odyhook code
     runs only here                       (still here, untouched)
 
                                      [Hetzner server, in Helsinki]  ← NEW
@@ -34,14 +34,14 @@ Before:                              After Phase 1:
                                          Costs €4.95/mo
 ```
 
-We rented an empty computer in a Hetzner data center and proved we can log into it. **No HookSmith code is on that server yet.** That comes in Phase 2.
+We rented an empty computer in a Hetzner data center and proved we can log into it. **No Odyhook code is on that server yet.** That comes in Phase 2.
 
 ## Step-by-step, what each thing meant
 
 ### "We picked CX23"
 We picked the size of the rented computer: **2 CPU cores, 4 GB of memory, 40 GB of disk**. That's the physical capacity of the box. The "23" is just Hetzner's model number; the architecture (x86 Cost-Optimized) means it's an older but cheaper Intel/AMD server.
 
-We didn't pick the bigger sizes (CX33, CX43, ...) because HookSmith's whole stack — Postgres, Redis, Next.js web, worker, Caddy — fits comfortably in 4 GB. Why pay more for headroom we won't use?
+We didn't pick the bigger sizes (CX33, CX43, ...) because Odyhook's whole stack — Postgres, Redis, Next.js web, worker, Caddy — fits comfortably in 4 GB. Why pay more for headroom we won't use?
 
 We didn't pick the ARM (Ampere) variant — would have been ~20% cheaper — because Hetzner had no ARM capacity available at the time. Functionally identical for our app; it was a coin flip we lost on stock.
 
@@ -72,14 +72,14 @@ That's why:
 ### "We got an IP: 157.180.91.106"
 Every device on the internet has an IP address — a number that uniquely identifies it on the network. Like a street address for houses. This is your server's address on the public internet.
 
-DNS will eventually map a friendly domain name (e.g. `hooksmith.yourdomain.com`) to this IP, but the IP is the underlying truth.
+DNS will eventually map a friendly domain name (e.g. `odyhook.yourdomain.com`) to this IP, but the IP is the underlying truth.
 
 ### "We SSH'd in"
 We opened an encrypted connection from your laptop to your server.
 
-The prompt you saw — `root@hooksmith:~#` — tells you:
+The prompt you saw — `root@odyhook:~#` — tells you:
 - `root` — the user you're logged in as (the highest-privilege account on the box)
-- `hooksmith` — the server's hostname (we named it that)
+- `odyhook` — the server's hostname (we named it that)
 - `~` — your current directory (the `~` means home directory of the current user, in this case `/root`)
 - `#` — the prompt symbol. The specific `#` (vs `$`) indicates you're logged in as root.
 
@@ -88,7 +88,7 @@ The prompt you saw — `root@hooksmith:~#` — tells you:
 ## Where we are now: the architecture map
 
 ```
-What HookSmith eventually needs:           What we have right now:
+What Odyhook eventually needs:           What we have right now:
 
 [Public internet]                          [Public internet]
         │                                          │
@@ -116,7 +116,7 @@ Docker is a tool that lets us run multiple programs on one server in isolated bo
 
 This is why the architecture works on a 4 GB box — Docker is lightweight enough that all four containers + their dependencies + the OS still fit comfortably.
 
-### 2. Get HookSmith's code onto the server
+### 2. Get Odyhook's code onto the server
 
 The code lives in your laptop's git repo right now. We'll push it to GitHub (private repo if you want), then on the server we'll `git clone` it down. The server then has a local copy of the source it can build into a container image.
 
@@ -138,7 +138,7 @@ We could have picked the deploy artifacts first and provisioned the server last.
 
 Production deployments often involve a bunch of additional infrastructure. We're not doing any of these on purpose:
 
-- **Load balancers, autoscaling, Kubernetes** — for handling massive traffic. HookSmith doesn't need this for the first thousand users.
+- **Load balancers, autoscaling, Kubernetes** — for handling massive traffic. Odyhook doesn't need this for the first thousand users.
 - **CI/CD pipeline (GitHub Actions auto-deploy)** — convenient, but not necessary on day one. We'll deploy by hand from the server initially. Setting up auto-deploy is a clean fast-follow once the manual flow works.
 - **Monitoring / alerting (Sentry, Datadog)** — production hygiene, but not blocking launch. Add it in the first patch release.
 - **Off-site backups** — you'll want this within the first week, not on day one. We'll do `pg_dump` to a free S3-compatible store (Backblaze B2 / Cloudflare R2) once the app is live.

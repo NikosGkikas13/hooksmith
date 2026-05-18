@@ -1,4 +1,4 @@
-# HookSmith
+# Odyhook
 
 Smart webhook proxy: ingest every webhook, log it forever, forward to
 destinations with automatic retries, and replay any event with one click.
@@ -27,7 +27,7 @@ npm run db:migrate
 
 ## Running it
 
-HookSmith needs **two processes** running side-by-side:
+Odyhook needs **two processes** running side-by-side:
 
 ```bash
 # Terminal A — Next.js app (dashboard + ingest + auth)

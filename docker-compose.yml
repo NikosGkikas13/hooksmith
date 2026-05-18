@@ -3,13 +3,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: hooksmith
-      POSTGRES_PASSWORD: hooksmith
-      POSTGRES_DB: hooksmith
+      POSTGRES_USER: odyhook
+      POSTGRES_PASSWORD: odyhook
+      POSTGRES_DB: odyhook
     ports:
       - "5432:5432"
     volumes:
-      - hooksmith_pg:/var/lib/postgresql/data
+      - odyhook_pg:/var/lib/postgresql/data
 
   redis:
     image: redis:7-alpine
@@ -17,7 +17,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - hooksmith_redis:/data
+      - odyhook_redis:/data
 
   mailhog:
     # Captures outgoing magic-link emails for local dev.
@@ -29,5 +29,5 @@ services:
       - "8025:8025"
 
 volumes:
-  hooksmith_pg:
-  hooksmith_redis:
+  odyhook_pg:
+  odyhook_redis:

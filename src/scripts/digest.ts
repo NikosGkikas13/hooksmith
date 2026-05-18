@@ -40,7 +40,7 @@ async function main() {
       }
       await sendMail({
         to: u.email,
-        subject: "Your HookSmith weekly digest",
+        subject: "Your Odyhook weekly digest",
         text: body,
       });
       console.log(`[digest] ${u.email}: sent`);

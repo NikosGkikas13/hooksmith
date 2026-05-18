@@ -9,7 +9,7 @@ export default async function Home() {
     <main className="flex flex-1 flex-col items-center justify-center px-6 py-24">
       <div className="max-w-2xl text-center">
         <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">
-          HookSmith
+          Odyhook
         </p>
         <h1 className="mt-4 text-5xl font-semibold tracking-tight">
           Webhooks that don&apos;t silently fail.

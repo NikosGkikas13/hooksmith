@@ -1,7 +1,7 @@
 import { anthropicFor, MODEL_DEFAULT } from "@/lib/anthropic";
 import { runTransformation } from "@/lib/sandbox/quickjs";
 
-const SYSTEM_PROMPT = `You are a code generator for HookSmith, a webhook management platform.
+const SYSTEM_PROMPT = `You are a code generator for Odyhook, a webhook management platform.
 
 Users describe how they want to reshape a webhook payload before it's forwarded to a destination. You output a single JavaScript arrow function that takes the event payload and returns the transformed value.
 

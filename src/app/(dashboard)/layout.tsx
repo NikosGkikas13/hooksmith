@@ -26,7 +26,7 @@ export default async function DashboardLayout({
             href="/sources"
             className="font-mono text-sm font-semibold tracking-tight"
           >
-            hooksmith
+            odyhook
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             {NAV.map((item) => (

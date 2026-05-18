@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - hooksmith_pg:/var/lib/postgresql/data
+      - odyhook_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
       interval: 5s
@@ -18,7 +18,7 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
-      - hooksmith_redis:/data
+      - odyhook_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -31,7 +31,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
-    image: hooksmith-app:latest
+    image: odyhook-app:latest
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -42,7 +42,7 @@ services:
     command: sh -c "npx prisma migrate deploy && npm start"
 
   worker:
-    image: hooksmith-app:latest
+    image: odyhook-app:latest
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -64,7 +64,7 @@ services:
       - web
 
 volumes:
-  hooksmith_pg:
-  hooksmith_redis:
+  odyhook_pg:
+  odyhook_redis:
   caddy_data:
   caddy_config:

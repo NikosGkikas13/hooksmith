@@ -83,7 +83,7 @@ async function main() {
     try {
       await sendMail({
         to: u.email,
-        subject: `HookSmith: schema drift detected on ${hits.length} source${hits.length === 1 ? "" : "s"}`,
+        subject: `Odyhook: schema drift detected on ${hits.length} source${hits.length === 1 ? "" : "s"}`,
         text: body,
       });
       console.log(`[drift] ${u.email}: sent (${hits.length} sources)`);
@@ -107,7 +107,7 @@ function renderDriftEmail(hits: DriftHit[]): string {
     lines.push("");
   }
   lines.push(
-    "Open HookSmith to review and (if expected) acknowledge the new shape.",
+    "Open Odyhook to review and (if expected) acknowledge the new shape.",
   );
   return lines.join("\n");
 }

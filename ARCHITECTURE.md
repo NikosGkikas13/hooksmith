@@ -1,12 +1,12 @@
-# HookSmith — Architecture & Technology Decisions
+# Odyhook — Architecture & Technology Decisions
 
-This document explains the end-to-end flow of HookSmith and justifies every significant technology choice, including what alternatives were considered and why they were not selected.
+This document explains the end-to-end flow of Odyhook and justifies every significant technology choice, including what alternatives were considered and why they were not selected.
 
 ---
 
-## 1. What HookSmith Does
+## 1. What Odyhook Does
 
-HookSmith is a webhook management platform. External services (Stripe, GitHub, Shopify, etc.) send HTTP POST requests to HookSmith, which verifies, stores, filters, optionally transforms, and reliably forwards them to one or more downstream destinations — with retries, observability, and AI-assisted tooling.
+Odyhook is a webhook management platform. External services (Stripe, GitHub, Shopify, etc.) send HTTP POST requests to Odyhook, which verifies, stores, filters, optionally transforms, and reliably forwards them to one or more downstream destinations — with retries, observability, and AI-assisted tooling.
 
 ---
 
@@ -196,7 +196,7 @@ They share Postgres (via Prisma) and Redis (via IORedis). This split lets the wo
 
 **Why custom multi-style won**:
 
-- **Provider-agnostic** — HookSmith is not tied to any single webhook provider. Stripe uses `Stripe-Signature: t=<ts>,v1=<hmac>`, GitHub uses `x-hub-signature-256: sha256=<hex>`, and most other services use a bare HMAC in a custom header. Supporting all three covers the vast majority of real-world webhook providers.
+- **Provider-agnostic** — Odyhook is not tied to any single webhook provider. Stripe uses `Stripe-Signature: t=<ts>,v1=<hmac>`, GitHub uses `x-hub-signature-256: sha256=<hex>`, and most other services use a bare HMAC in a custom header. Supporting all three covers the vast majority of real-world webhook providers.
 - **No SDK dependency per provider** — using `stripe.webhooks.constructEvent` would require installing the Stripe SDK (and every other provider's SDK). Our HMAC implementation is ~80 lines of code using only Node.js `crypto`. It verifies the same math without pulling in provider-specific dependencies.
 - **Constant-time comparison** — all comparisons use `crypto.timingSafeEqual` to prevent timing oracle attacks. The hex strings are compared after ensuring equal length, which avoids a separate class of length-based timing leaks.
 
@@ -223,7 +223,7 @@ They share Postgres (via Prisma) and Redis (via IORedis). This split lets the wo
 
 - **Two-tier model strategy** — Claude Sonnet is used for tasks requiring reasoning quality (failure diagnosis, code generation, NL rule compilation), while Claude Haiku is used for high-frequency structured tasks (schema drift detection, weekly digest). This maps cost to value: the diagnosis of a production outage justifies a Sonnet call, while summarizing weekly stats does not.
 - **Structured output reliability** — the rule compiler asks Claude to output a specific JSON AST grammar. Claude's instruction-following is strong enough that the output passes `validateFilterAst()` validation consistently. The system prompt explicitly describes the 12-node grammar and includes domain hints (e.g., "Stripe amounts are in cents").
-- **BYOK model** — users provide their own Anthropic API key, stored encrypted. This means HookSmith has zero AI infrastructure cost, no API key management complexity, and users maintain full control over their token spend. The alternative — HookSmith paying for API calls — would require usage-based pricing, billing infrastructure, and cost-per-user accounting.
+- **BYOK model** — users provide their own Anthropic API key, stored encrypted. This means Odyhook has zero AI infrastructure cost, no API key management complexity, and users maintain full control over their token spend. The alternative — Odyhook paying for API calls — would require usage-based pricing, billing infrastructure, and cost-per-user accounting.
 
 **Why not OpenAI**: Both would work. Claude was chosen for the structured output and instruction-following characteristics needed by the rule compiler. The specific choice is swappable since AI calls are isolated behind `anthropicFor()` and model constants.
 
@@ -261,7 +261,7 @@ They share Postgres (via Prisma) and Redis (via IORedis). This split lets the wo
 **Why Docker Compose won**:
 
 - **Reproducibility** — `docker compose up` gives every developer an identical Postgres, Redis, and mail server. No "works on my machine" from version mismatches or different Postgres configurations.
-- **Isolation** — dev databases don't conflict with other projects. Named volumes (`hooksmith_pg`, `hooksmith_redis`) keep data separate.
+- **Isolation** — dev databases don't conflict with other projects. Named volumes (`odyhook_pg`, `odyhook_redis`) keep data separate.
 - **MailHog** — captures magic-link emails during development without configuring a real SMTP server. The web UI at `localhost:8025` shows every email sent by NextAuth.
 
 ---

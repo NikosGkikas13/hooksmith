@@ -23,7 +23,7 @@ export default async function ApiKeysPage() {
           API Keys
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
-          HookSmith&apos;s AI features (transformation builder, failure
+          Odyhook&apos;s AI features (transformation builder, failure
           diagnostician, NL routing rules) run against Claude using{" "}
           <strong>your own</strong> Anthropic API key. Your usage is billed to
           you, not the platform. Keys are encrypted at rest with AES-256-GCM.

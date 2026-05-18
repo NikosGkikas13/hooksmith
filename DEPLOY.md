@@ -1,6 +1,6 @@
-# Deploying HookSmith to Production
+# Deploying Odyhook to Production
 
-This document captures everything needed to take HookSmith from "runs on my laptop" to a running production deployment. It is documentation only — none of the code changes listed in [§3](#3-pre-deploy-fix-ups) have been applied yet, and an operator should work through that section before the first deploy.
+This document captures everything needed to take Odyhook from "runs on my laptop" to a running production deployment. It is documentation only — none of the code changes listed in [§3](#3-pre-deploy-fix-ups) have been applied yet, and an operator should work through that section before the first deploy.
 
 ## Table of contents
 
@@ -15,7 +15,7 @@ This document captures everything needed to take HookSmith from "runs on my lapt
 
 ## 1. Architecture summary
 
-HookSmith is a webhook router with an AI-assisted transformation builder. A production deployment must provision **two long-lived Node processes plus three external services**:
+Odyhook is a webhook router with an AI-assisted transformation builder. A production deployment must provision **two long-lived Node processes plus three external services**:
 
 | Component | Process / image | Notes |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Source of truth: [.env.example](.env.example) and audit of `process.env.*` refer
 | `EMAIL_SERVER_PORT` | Yes | SMTP port (typically 587 or 465). | Provider port. |
 | `EMAIL_SERVER_USER` | Yes | SMTP username / API key id. | Provider credential. |
 | `EMAIL_SERVER_PASSWORD` | Yes | SMTP password / API secret. | Provider credential. |
-| `EMAIL_FROM` | Yes | `From:` address for magic links. Domain must be verified at the provider. | `HookSmith <no-reply@yourdomain.com>` |
+| `EMAIL_FROM` | Yes | `From:` address for magic links. Domain must be verified at the provider. | `Odyhook <no-reply@yourdomain.com>` |
 | `NEXT_PUBLIC_APP_URL` | Yes | Public base URL shown in the dashboard's copy-to-clipboard ingest URLs. **Must be set at build time** (it is inlined into the client bundle). | Same value as `AUTH_URL`. |
 | `RATE_LIMIT_PER_SEC` | No | Default sustained per-source rate (token-bucket refill rate). Default `10`. | Numeric. |
 | `RATE_LIMIT_BURST` | No | Default per-source burst capacity. Default `20`. | Numeric. |
@@ -106,7 +106,7 @@ Still using `console.*`. This is a low-risk upgrade — pick a vendor (Sentry, H
 
 ## 4. Deploy path A — Fly.io (recommended)
 
-Fly is the recommended target because HookSmith needs a long-lived BullMQ worker, which rules out pure-Vercel/Netlify deployments. Fly's `[processes]` config lets the web server and worker share one image and one deploy.
+Fly is the recommended target because Odyhook needs a long-lived BullMQ worker, which rules out pure-Vercel/Netlify deployments. Fly's `[processes]` config lets the web server and worker share one image and one deploy.
 
 ### 4.1 One-time setup
 
@@ -118,8 +118,8 @@ flyctl launch --no-deploy        # creates fly.toml; pick a region and app name
 Provision data services:
 
 ```sh
-flyctl postgres create --name hooksmith-db
-flyctl postgres attach hooksmith-db    # sets DATABASE_URL on the app
+flyctl postgres create --name odyhook-db
+flyctl postgres attach odyhook-db    # sets DATABASE_URL on the app
 
 flyctl redis create                    # Upstash-backed Redis; sets REDIS_URL
 ```
@@ -129,14 +129,14 @@ Set the remaining secrets (replace values):
 ```sh
 flyctl secrets set \
   AUTH_SECRET="$(openssl rand -base64 32)" \
-  AUTH_URL="https://hooksmith.fly.dev" \
-  NEXT_PUBLIC_APP_URL="https://hooksmith.fly.dev" \
+  AUTH_URL="https://odyhook.fly.dev" \
+  NEXT_PUBLIC_APP_URL="https://odyhook.fly.dev" \
   ENCRYPTION_KEY="$(openssl rand -base64 32)" \
   EMAIL_SERVER_HOST="smtp.resend.com" \
   EMAIL_SERVER_PORT="587" \
   EMAIL_SERVER_USER="resend" \
   EMAIL_SERVER_PASSWORD="re_xxx" \
-  EMAIL_FROM="HookSmith <no-reply@yourdomain.com>"
+  EMAIL_FROM="Odyhook <no-reply@yourdomain.com>"
 ```
 
 ### 4.2 `Dockerfile`
@@ -180,7 +180,7 @@ CMD ["npm", "start"]
 [build]
   dockerfile = "Dockerfile"
   [build.args]
-    NEXT_PUBLIC_APP_URL = "https://hooksmith.fly.dev"
+    NEXT_PUBLIC_APP_URL = "https://odyhook.fly.dev"
 
 [deploy]
   release_command = "npx prisma migrate deploy"
@@ -238,7 +238,7 @@ The repo already has [docker-compose.yml](docker-compose.yml) with Postgres, Red
 
 6. **Schedule cron** via the host's `cron` running `docker compose ... exec web npm run job:digest`.
 
-7. **Pin Postgres + Redis to volumes** (already done in the dev compose file via `hooksmith_pg` and `hooksmith_redis` — keep those, do not remove on `down`).
+7. **Pin Postgres + Redis to volumes** (already done in the dev compose file via `odyhook_pg` and `odyhook_redis` — keep those, do not remove on `down`).
 
 Operationally heavier than Fly (you own backups, OS patches, TLS rotation), but cheaper and self-contained.
 
@@ -248,7 +248,7 @@ Operationally heavier than Fly (you own backups, OS patches, TLS rotation), but 
 
 Run through this checklist after the first deploy completes.
 
-- [ ] `curl -I https://hooksmith.example.com/` returns `200`.
+- [ ] `curl -I https://odyhook.example.com/` returns `200`.
 - [ ] `flyctl status` (or `docker compose ps`) shows `web` and `worker` both healthy / running.
 - [ ] `npx prisma migrate status` against the prod DB reports "Database schema is up to date."
 - [ ] Sign-in flow end-to-end:
@@ -257,7 +257,7 @@ Run through this checklist after the first deploy completes.
   - [ ] Click-through lands on the dashboard authenticated.
 - [ ] Webhook ingest end-to-end:
   - [ ] Create a Source in the dashboard; copy the ingest URL and signing secret.
-  - [ ] `curl -X POST` the ingest URL with a valid HMAC `X-HookSmith-Signature` header (see [src/lib/hmac.ts](src/lib/hmac.ts) for the scheme).
+  - [ ] `curl -X POST` the ingest URL with a valid HMAC `X-Odyhook-Signature` header (see [src/lib/hmac.ts](src/lib/hmac.ts) for the scheme).
   - [ ] Confirm an `Event` row appears in Postgres.
   - [ ] Confirm a `Delivery` row transitions to `delivered` (or `failed` with a real error).
   - [ ] `flyctl logs -i <worker-machine>` shows the worker picking up and dispatching the job.

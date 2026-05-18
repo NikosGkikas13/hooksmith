@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HookSmith",
+  title: "Odyhook",
   description: "Smart webhook proxy — ingest, log, forward, retry, replay.",
 };
 

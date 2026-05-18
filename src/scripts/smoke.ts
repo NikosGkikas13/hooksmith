@@ -85,9 +85,9 @@ async function ensureTestEntities(opts: {
 }) {
   // One fixed user for smoke runs so repeat invocations are idempotent.
   const user = await prisma.user.upsert({
-    where: { email: "smoke@hooksmith.local" },
+    where: { email: "smoke@odyhook.local" },
     create: {
-      email: "smoke@hooksmith.local",
+      email: "smoke@odyhook.local",
       name: "Smoke Test",
     },
     update: {},

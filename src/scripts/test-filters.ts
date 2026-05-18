@@ -7,7 +7,7 @@ import { Prisma } from "../generated/prisma/client";
 
 async function run() {
   const user = await prisma.user.findUnique({
-    where: { email: "smoke@hooksmith.local" },
+    where: { email: "smoke@odyhook.local" },
   });
   if (!user) throw new Error("seed user not found — run seed-events first");
   const userId = user.id;

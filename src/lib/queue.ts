@@ -1,7 +1,7 @@
 import { Queue } from "bullmq";
 import IORedis, { type Redis } from "ioredis";
 
-export const DELIVERY_QUEUE = "hooksmith.delivery";
+export const DELIVERY_QUEUE = "odyhook.delivery";
 
 // Exponential backoff schedule in ms, capped at 6 attempts total (5 retries).
 // Order: 10s, 30s, 2m, 10m, 1h, 6h

@@ -11,7 +11,7 @@ export default function SignInPage({
     <main className="flex flex-1 items-center justify-center px-6 py-16">
       <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="text-xl font-semibold tracking-tight">
-          Sign in to HookSmith
+          Sign in to Odyhook
         </h1>
         <p className="mt-1 text-sm text-zinc-500">
           Continue with GitHub, or get a magic link by email.
